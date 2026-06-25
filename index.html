@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Calculadora Balística</title>
+
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#1f2f46">
+
+  <script src="jspdf.min.js"></script>
+
+  <style>
+
+body {
+  font-family: Arial, sans-serif;
+  background: #f2f2f2;
+  margin: 0;
+  padding: 0;
+}
+
+main {
+  max-width: 900px;
+  margin: auto;
+  padding: 20px;
+}
+
+h1 {
+  color: #072d64;
+}
+
+.card {
+  background: white;
+  padding: 20px;
+  margin-top: 20px;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px #0002;
+}
+
+label {
+  display: block;
+  margin-top: 12px;
+  font-weight: bold;
+}
+
+input {
+  width: 100%;
+  padding: 8px;
+  margin-top: 4px;
+  box-sizing: border-box;
+}
+
+button {
+  margin-top: 20px;
+  padding: 12px;
+  width: 100%;
+  background: #072d64;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 16px;
+  cursor: pointer;
+}
+
+button:hover {
+  background: #0b3f8a;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 15px;
+}
+
+th, td {
+  border: 1px solid #ccc;
+  padding: 8px;
+  text-align: center;
+}
+
+th {
+  background: #072d64;
+  color: white;
+}
+
+footer {
+  text-align: center;
+  padding: 20px;
+  color: #666;
+  font-size: 14px;
+}
+
+  </style>
+</head>
+
+<body>
+
+  <main>
+    <h1>Retrotrajetória Balística</h1>
+    <p>PWA offline com gravidade variável, densidade exponencial e RK4.</p>
+
+    <section class="card">
+      <h2>Parâmetros</h2>
+
+      <label>Altura de impacto (m)</label>
+      <input id="alturaImpacto" type="number" value="62" step="0.01">
+
+      <label>Ângulo Phi (graus)</label>
+      <input id="phi" type="number" value="-1" step="0.01">
+
+      <label>Azimute (graus)</label>
+      <input id="azimute" type="number" value="247" step="0.01">
+
+      <label>Latitude (graus)</label>
+      <input id="latitude" type="number" value="-8.032198" step="0.000001">
+
+      <label>Longitude (graus)</label>
+      <input id="longitude" type="number" value="-34.918262" step="0.000001">
+
+      <label>Velocidade nominal do fabricante (m/s)</label>
+      <input id="velocidade" type="number" value="230" step="0.1">
+
+      <label>Massa do projétil (g)</label>
+      <input id="massa" type="number" value="10.24" step="0.01">
+
+      <label>Diâmetro do projétil (mm)</label>
+      <input id="diametro" type="number" value="8.82" step="0.01">
+
+      <label>Coeficiente de arrasto</label>
+      <input id="cd" type="number" value="0.2358" step="0.0001">
+
+      <label>Altitude média da cidade (m)</label>
+      <input id="altitudeCidade" type="number" value="15" step="1">
+
+      <label>Altura provável da boca da arma (m)</label>
+      <input id="alturaBoca" type="number" value="1.40" step="0.01">
+
+      <label>Variação da velocidade nominal (%)</label>
+      <input id="variacao" type="number" value="10" step="1">
+
+      <label>Velocidade de impacto estimada (m/s)</label>
+      <input id="velocidadeImpacto" type="number" value="180" step="0.1">
+
+      <button onclick="calcular()">Calcular retrotrajetória</button>
+    </section>
+
+    <section class="card">
+      <h2>Resultados</h2>
+      <div id="resultado"></div>
+    </section>
+  </main>
+
+<footer>
+  © Perito Meirere
+</footer>
+
+
+<script>
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.register("sw.js");
+}
+
+function grausParaRad(graus) {
+  return graus * Math.PI / 180;
+}
+
+function norma(vx, vy, vz) {
+  return Math.sqrt(vx * vx + vy * vy + vz * vz);
+}
+
+function gravidadeLatitude(latitudeGraus) {
+  const phi = grausParaRad(latitudeGraus);
+  const sin2 = Math.sin(phi) ** 2;
+  const sin2_2phi = Math.sin(2 * phi) ** 2;
+
+  return 9.780327 * (1 + 0.0053024 * sin2 - 0.0000058 * sin2_2phi);
+}
+
+function densidadeArExponencial(altitudeM) {
+  const rho0 = 1.2250;
+  const H = 10400;
+  return rho0 * Math.exp(-altitudeM / H);
+}
+
+function retrotrajetoriaSemArrasto(params) {
+  const phi = grausParaRad(params.anguloPhiGraus);
+  const g = gravidadeLatitude(params.latitudeGraus);
+
+  const v0 = params.velocidadeFabricanteMs;
+  const h = params.alturaImpactoM;
+
+  const cosPhi = Math.cos(phi);
+  const tanPhi = Math.tan(phi);
+  const secPhi = 1 / cosPhi;
+
+  const A = v0 * v0 - 2 * g * h;
+
+  if (A <= 0) {
+    return null;
+  }
+
+  const termoRaiz = (v0 * v0 * secPhi * secPhi) / A - 1;
+
+  if (termoRaiz < 0) {
+    return null;
+  }
+
+  const raiz = Math.sqrt(termoRaiz);
+
+  const fator = (cosPhi * cosPhi * A) / g;
+
+  const xMenor = fator * (-Math.abs(tanPhi) + raiz);
+  const xMaior = fator * (+Math.abs(tanPhi) + raiz);
+
+  return {
+    xMenorM: xMenor,
+    xMaiorM: xMaior,
+    gravidadeLocalMs2: g
+  };
+}
+
+function valor(id) {
+  return parseFloat(document.getElementById(id).value);
+}
+
+function calcular() {
+  const params = {
+    alturaImpactoM: valor("alturaImpacto"),
+    anguloPhiGraus: valor("phi"),
+    anguloAzimuteGraus: valor("azimute"),
+    latitudeGraus: valor("latitude"),
+    longitudeGraus: valor("longitude"),
+    velocidadeFabricanteMs: valor("velocidade")
+  };
+
+  const semArrasto = retrotrajetoriaSemArrasto(params);
+
+  let html = "";
+
+  if (semArrasto) {
+  html += `
+  <h3>Resultado sem resistência do ar</h3>
+  <p><strong>x-:</strong> ${semArrasto.xMenorM.toFixed(2)} m</p>
+  <p><strong>x+:</strong> ${semArrasto.xMaiorM.toFixed(2)} m</p>
+  <p><strong>Hipótese:</strong> disparo ao nível do solo de referência.</p>
+  <p><strong>Gravidade local:</strong> ${semArrasto.gravidadeLocalMs2.toFixed(6)} m/s²</p>
+`;
+} else {
+    html = `<p>Não foi possível calcular uma solução real para os dados informados.</p>`;
+  }
+
+  document.getElementById("resultado").innerHTML = html;
+}
+
+</script>
+
+</body>
+
+</html>
+
+
