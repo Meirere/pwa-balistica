@@ -1,7 +1,7 @@
 {
-  "name": "Perícia de Trânsito",
-  "short_name": "Trânsito",
-  "description": "Aplicativo para coleta de dados periciais em acidentes de trânsito",
+  "name": "Calculadora balística",
+  "short_name": "Balistica",
+  "description": "Aplicativo para calculo balistico",
   "start_url": ".",
   "display": "standalone",
   "background_color": "#ffffff",
